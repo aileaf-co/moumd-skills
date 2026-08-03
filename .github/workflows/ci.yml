@@ -1,0 +1,18 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  no-invented-verbs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # ⚠ 이 가드는 `moumd` 가 있어야 판정한다. 없으면 exit 2(판정 불가)로 떨어지고
+      #   이 잡은 **실패**한다 — 도구가 없다는 이유로 초록이 되는 것을 막기 위해서다.
+      #   moumd 는 비공개 배포이므로 여기서 설치 단계를 채워야 CI 가 의미를 갖는다.
+      #   ★ 그때까지 이 잡은 **의도적으로 붉다**: "가드가 있다"와 "가드가 돈다"는 다르고,
+      #     후자가 아닌 것을 초록으로 보이게 하지 않는다.
+      - name: moumd 준비 (TODO — 비공개 릴리스 접근 배선)
+        run: echo "::warning::moumd 설치 단계 미배선 — 아래 가드는 exit 2 로 실패한다"
+      - run: bash scripts/check-no-invented-verbs.sh
