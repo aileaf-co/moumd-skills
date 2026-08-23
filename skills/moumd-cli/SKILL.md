@@ -1,3 +1,8 @@
+---
+name: moumd-cli
+description: moumd 데몬 CLI 사용법 — verb 발견(카탈로그가 권위) · 에이전트 모드 계약 · 파괴적 verb 이중 opt-in · 격리 실측 · exit code 계약. moumd 명령을 실행·설명·수정할 때, 그리고 fleet/mesh/pkg/gitops/secrets 작업을 moumd 로 몰 때 사용. 파괴적 표면이나 격리(config-dir, MOUMD_HOME, MOUMD_SERVICE_NAME)가 얽히면 특히. 데스크톱 앱 CLI moum 은 별개다.
+---
+
 # moumd CLI — 에이전트가 쓰는 법
 
 `moumd` 는 moum-ops 의 **데몬**이자 그 데몬을 조작하는 CLI 다.
@@ -11,6 +16,41 @@
 | `moum-ops.com/api/v1/**` | 플랫폼 API. 데몬이 로컬에 여는 `/v1/**` 과 **다른 것**이다 |
 
 ---
+
+## 이 스킬로 하는 일
+
+**어디서 시작할지 모르면 물어봐라.** 이 verb 가 여정의 어느 칸인지와 **다음 명령 한 줄**을 준다.
+
+```bash
+MOUMD_AGENT_MODE=1 moumd onboard    # steps[] = 지금까지 · next = 다음 한 줄
+```
+
+여정은 **mesh 가입 → fleet 등록 → Active → reconcile** 이다. `onboard` 는 그중 어디서
+멈췄는지와 다음 명령을 `next` 필드로 돌려준다 — 여정을 진행시키는 작업이라면 여기서 시작하는
+것이 항상 가장 짧다.
+
+찾는 것이 "막힌 곳"이 아니라 **"이 작업은 어느 그룹인가"** 라면 아래에서 고르고, 그 **안쪽은
+카탈로그로 좁혀라**(§1). 아래는 **그룹 지도**이지 verb 목록이 아니다 — 어떤 verb 가 있는지는
+언제나 카탈로그가 권위다.
+
+```bash
+moumd status | moumd doctor | moumd paths              # 이 노드는 지금 어떤 상태인가
+moumd node | moumd fleet                               # 노드·fleet 등록/승인/서명/키/시크릿
+moumd mesh                                             # MeshVPN 연결·피어·라우트·DNS
+moumd gitops | moumd pkg | moumd dsc                   # 선언한 상태를 실제로 수렴시키는 레인
+moumd secrets                                          # 어떤 비밀이 어디 살고 누가 읽나 (읽기 전용)
+moumd login | moumd auth | moumd oidc | moumd zitadel  # 신원 — 플랫폼 · 조직 IdP · M2M
+moumd authority | moumd operator                       # Fleet PKI — CA·마스터키 · 운영자 신원
+moumd forge                                            # Gitea 설치 (호스트 직접 또는 k0s)
+moumd start | moumd stop | moumd restart               # 설치된 서비스 조작 (⚠ §5 — 격리 없이 만지지 마라)
+moumd update | moumd config | moumd log | moumd trace  # 자체 업데이트 · 설정 · 로그 · 관측
+```
+
+⚠ 이 지도는 **전부가 아니다.** 최상위 그룹은 37개이고 전량은 카탈로그가 준다:
+`moumd catalog --format json --verb <그룹>` 으로 그 안을 열어라.
+
+그리고 **작업을 시작하기 전에 §0 을 켜고**, 파괴적 표면·격리가 얽히면 **§2·§3 을 먼저 읽어라.**
+그 두 절은 이 문서에서 다른 데 없는 실측을 담고 있다.
 
 ## 0. 먼저 이것부터
 
@@ -285,13 +325,13 @@ MOUMD_SERVICE_NAME=com.moum.moumd.verbtest moumd stop   # 실험 레이블만 �
 아직 아무것도 등록돼 있지 않으므로 `moumd stop` 이 *"no moumd service is registered"* 를
 내야 한다. 진짜 서비스가 응답한다면 그건 **프로덕션 레이블을 보고 있다는 뜻**이니 즉시 멈춰라.
 
-막혔을 때 먼저 이것부터 — 전부 읽기 전용이다:
+**행동 전에 상태부터 읽어라** — 아래는 전부 읽기 전용이다:
 
 | | |
 |---|---|
 | `moumd status` | 데몬이 살아 있는가 |
 | `moumd doctor` | 채널·바인드·mesh·fleet·weakeners 다축 진단 + 다음 행동 |
-| `moumd onboard` | 이 노드가 온보딩 여정의 어느 단계인가 |
+| `moumd onboard` | 여정의 어느 단계인가 + `next` 에 다음 한 줄 — **진입점은 맨 위 절** |
 | `moumd paths` | 이 셸과 데몬이 **같은 경로**를 보고 있는가 (§3) |
 | `moumd secrets where` | 어떤 비밀이 어디 살고 누가 읽는가 (읽기 전용) |
 
