@@ -30,7 +30,8 @@ verb 목록을 여기 복제하면 그것은 두 번째 출처가 되고, 다음
 
 ```bash
 MOUMD_BIN=/path/to/moumd scripts/check-no-invented-verbs.sh
-# OK: 문서의 moumd 명령 15건이 모두 카탈로그에 존재한다 (카탈로그 verb 263개)
+# OK: 문서의 moumd 명령 <N>건이 모두 카탈로그에 존재한다 (카탈로그 verb <M>개)
+#     N 은 문서를 고칠 때마다, M 은 릴리스마다 움직인다 — 숫자가 아니라 `OK:` 를 봐라.
 ```
 
 문서를 고칠 때 이 한 줄을 돌려라. `moumd` 가 없으면 **exit 2(판정 불가)** 다 — 통과가 아니다.
