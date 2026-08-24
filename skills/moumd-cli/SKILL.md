@@ -135,6 +135,44 @@ moumd trace list              # 사후 흔적 — 요청이 실제로 흘렀나
 내려와라 — `pkg reconcile` 이 초록인 것은 *선언이 적용됐다*는 뜻이지 *에이전트가 모델과 말한다*는
 뜻이 아니다.
 
+### 정보가 없으면 — **묻기 전에 moumd 에게 먼저 물어라**
+
+*"AI API 가 등록돼 있나" · "메신저 설정이 있나"* 같은 질문에 moumd 는 **무엇이 필요한지 ·
+어디 사는지 · 어떻게 넣는지**를 스스로 답한다. 그 목록을 이 문서에 적지 마라 — 물어라.
+
+```bash
+moumd secrets list     # 카탈로그 전량 — 항목마다 what · location · rotation 을 들고 있다
+moumd secrets where    # 하나만 (이름을 인자로): 무엇이고 · 어디 살고 · 어떻게 교체하나
+moumd secrets get      # 값 없이 **등록 여부만** — status = present | absent (--reveal 불필요)
+moumd secrets doctor   # 이 머신에서 무엇이 host 비밀을 지키고 있나
+```
+
+실측 — `secrets get` 은 값을 안 보여주고 상태만 답한다:
+`{"name":"llm_key","status":"absent","redacted":true,"value":null}`
+
+그리고 `secrets where` 가 **등록 명령을 그대로 준다**:
+`rotation: "moumd fleet secret set --global --name llm_key --from env|file|stdin"`
+`location: "secrets.d cascade; referenced from proxy.outbound_providers token_ref"`
+
+**그래서 순서는 이렇다:**
+
+```
+① `secrets get <이름>` 으로 status 를 본다 — absent 인가 present 인가
+② absent 면 `secrets where <이름>` 의 what · location 을 그대로 인용해 사용자에게 설명한다
+③ 값을 **요청**한다. 값은 사용자만 갖고 있다 — 추측하거나 만들어내지 마라
+④ 등록은 `rotation` 필드가 준 명령으로 한다. 이 문서가 아니라 그 필드가 권위다
+```
+
+⚠ **비밀 값을 명령줄에 붙여넣지 마라.** `rotation` 이 `--from env|file|stdin` 을 주는 이유가
+그것이다 — argv 는 프로세스 목록·셸 히스토리·로그에 남는다. 사용자에게 안내할 때도 그렇게 하라.
+
+🔴 **`fleet secret set` 에는 `--yes` 게이트가 없다**(§2 의 17개에 들어 있지 않다). 이미
+`present` 인 것을 덮어쓰면 **말없이 덮인다.** ①의 status 확인을 건너뛰지 마라.
+
+⚠ 카탈로그에 없는 설정(예: 메신저 DSC 파라미터)은 비밀이 아니라 **선언**이다 — 위 루프 ④의
+파일로 간다. 그 경우에도 순서는 같다: 무엇이 필요한지는 문서가 아니라 `fleet dsc validate` 가
+말하게 하고, 값은 사용자에게 요청하라.
+
 ### 이 스킬이 다루지 않는 표면
 
 | 작업 | 어디 |
@@ -452,6 +490,9 @@ moumd fleet snapshot    # fleet 전체: ACTIVE 멤버의 membership·도달성·
 | HTTP 를 직접 호출 | 동의 게이트가 **CLI 층**에 있어 그대로 우회된다 |
 | `trace list` 가 비었다고 "트래픽 없음" 판정 | 관측이 꺼져 있으면 **기록 자체를 안 한다** |
 | 왕복을 확인 못 했는데 "됐다"고 보고 | 확인 못 하는 칸은 **사용자에게 요청**하라 — 어디까지 초록인지와 함께 |
+| 필요한 설정을 문서/기억에서 answer | `moumd secrets where` 가 what·location·rotation 을 준다 |
+| 비밀 값을 명령줄 인자로 전달 | argv 는 프로세스 목록·히스토리·로그에 남는다 — `--from env\|file\|stdin` |
+| status 확인 없이 `moumd fleet secret set` | `--yes` 게이트가 없어 **말없이 덮는다** |
 | 기억한 verb 이름을 재사용 | 개명에 별칭이 없다 (`daemon` → `moumd run`) |
 | `requiresConfirmation:false` 를 "안전"으로 해석 | `--yes` 가 없다는 뜻일 뿐이다 |
 | `supportsDryRun:true` 를 "안 쓴다"의 증거로 사용 | 카탈로그는 **선언**의 반영이다 |
