@@ -35,10 +35,14 @@ MOUMD_AGENT_MODE=1 moumd onboard    # steps[] = 지금까지 · next = 다음 �
 
 ```bash
 moumd status | moumd doctor | moumd paths              # 이 노드는 지금 어떤 상태인가
-moumd node | moumd fleet                               # 노드·fleet 등록/승인/서명/키/시크릿
-moumd mesh                                             # MeshVPN 연결·피어·라우트·DNS
-moumd gitops | moumd pkg | moumd dsc                   # 선언한 상태를 실제로 수렴시키는 레인
-moumd secrets                                          # 어떤 비밀이 어디 살고 누가 읽나 (읽기 전용)
+moumd onboard | moumd mesh onboard                     # 여정 조회 / 그룹+fleet 프로비저닝 ⚠ 다른 verb 다
+moumd mesh                                             # MeshVPN — 연결·피어·그룹·setup key·라우트·DNS
+moumd node | moumd fleet                               # 노드 등록 · fleet 가입/승인/서명
+moumd fleet repo | moumd fleet policy                  # 어느 fleet repo 를 쓰나 · 정책
+moumd fleet role | moumd fleet fit                     # 배포 타겟팅(labels) · 노드 적합 게이트
+moumd fleet secret | moumd secrets                     # 시크릿 쓰기(단수) / 어디 사는지 읽기(복수)
+moumd gitops | moumd pkg | moumd dsc                   # 선언을 현행화하고 수렴시키는 레인
+moumd advisory | moumd fleet advisory | moumd proxy    # 어느 모델이 이 호스트/fleet 에 맞나 · 모델 라우팅
 moumd login | moumd auth | moumd oidc | moumd zitadel  # 신원 — 플랫폼 · 조직 IdP · M2M
 moumd authority | moumd operator                       # Fleet PKI — CA·마스터키 · 운영자 신원
 moumd forge                                            # Gitea 설치 (호스트 직접 또는 k0s)
@@ -51,6 +55,67 @@ moumd update | moumd config | moumd log | moumd trace  # 자체 업데이트 · 
 
 그리고 **작업을 시작하기 전에 §0 을 켜고**, 파괴적 표면·격리가 얽히면 **§2·§3 을 먼저 읽어라.**
 그 두 절은 이 문서에서 다른 데 없는 실측을 담고 있다.
+
+---
+
+## 배포는 verb 가 아니라 **선언**이다 — fleet repo 루프
+
+카탈로그에 `install-agent` 같은 verb 는 **없다.** 그건 능력의 부재가 아니라 **설계**다 —
+무엇을 설치·설정할지는 **fleet repo 의 파일**이 정하고, moumd 는 그 SoR 을 *찾아 주고 ·
+현행화하고 · 검사하고 · 수렴시킨다.* 카탈로그만 뒤지면 *"그 기능은 없다"* 는 **틀린 결론**에 닿는다.
+
+```bash
+# ① fleet 이 설정돼 있나 — 전부 읽기 전용
+moumd fleet repo current      # 활성 프로필 이름 (없으면 프로필 목록을 본다)
+moumd gitops status           # repoUrl · branch · head vs last · verdict. sync 를 유발하지 않는다
+moumd paths                   # computed.gitops_repo = 로컬 클론 경로 (§3)
+
+# ② 현행화 — authority 쪽 변경(sign·approve·secret-set)은 temp clone 으로 push 되므로
+#    이 노드의 클론은 낡아 있다
+moumd gitops sync
+
+# ③ 설정 확인
+moumd fleet repo show         # 프로필 상세
+moumd fleet repo verify       # Triage preflight
+
+# ④ 선언 편집 — 여기서부터는 verb 가 아니라 **파일**이다
+#      fleet/global/software.yaml               패키지 카스케이드 — fleet 전체
+#      fleet/global/roles/<role>/software.yaml  역할별 — 개별 타겟팅
+#      fleet/global/dsc/*.dsc.yaml              DSC 레인 — AI agent · ollama · 메신저가 여기
+#      fleet/daemons/<short_id>/daemon.yaml     이 노드 하나
+#    ⚠ 없으면 만든다. 갓 만든 fleet 의 global 엔 ca-chain.pem 뿐이다(실측).
+#    ⚠ 경로의 권위는 이 문서가 아니라 위 verb 들의 --help 다.
+
+# ⑤ 커밋 전 검사 — 전부 오프라인
+moumd pkg validate            # software 카스케이드 오타·파싱
+moumd fleet dsc validate      # dsc 문서 + engine 선언이 실제 구현과 맞나
+moumd fleet validate-tree     # 예약 이름 가드 — FAIL-CLOSED
+
+# ⑥ 적용과 확인
+moumd pkg reconcile
+moumd gitops status           # 수렴했나
+moumd fleet role match        # 이 선언이 어느 노드에 붙나 (labels 축)
+```
+
+⚠ **전체 배포와 개별 배포의 차이는 verb 가 아니라 파일 위치다** — `fleet/global/` 은 전체,
+`roles/<role>/` 은 역할, `daemons/<short_id>/` 은 그 노드 하나. 타겟이 맞는지는
+`moumd fleet role match` 가 답한다.
+
+⚠ **`moumd onboard` 와 `moumd mesh onboard` 는 다른 verb 다.** 앞은 *이 노드가 여정의 어디쯤인가*
+(읽기 전용), 뒤는 *그룹 + 선택적 GitOps fleet 을 프로비저닝하고 mesh 에 가입*(생성)이다.
+
+### 이 스킬이 다루지 않는 표면
+
+| 작업 | 어디 |
+|---|---|
+| 모델 등록·다운로드·서빙 설정 | 앱 CLI `moum model` / `moum serve` — 별도 스킬 `moum-ai-model-cli` |
+| AI agent 런타임 제어 | 데몬 HTTP `/v1/agent/*` · `/v1/hosted/*` — CLI 에서 **의도적으로 제거**됐다(2026-06-15, 구현은 남아 있다) |
+
+즉 **카탈로그는 CLI verb 의 권위이지 데몬 능력의 권위가 아니다.** 위 두 줄이 그 반례다.
+
+🔴 그렇다고 HTTP 를 직접 부르지 마라 — §2 의 동의 게이트는 **CLI 층에 있어서** 우회된다.
+그리고 moumd 는 OpenAPI 스펙을 내지 않는다(실측: `/openapi.json` · `/swagger.json` · `/docs`
+전부 404). 엔드포인트를 손으로 목록화하지 마라 — SoR 은 `src-tauri/moumd/src/server/` 소스다.
 
 ## 0. 먼저 이것부터
 
@@ -351,6 +416,9 @@ moumd fleet snapshot    # fleet 전체: ACTIVE 멤버의 membership·도달성·
 | | |
 |---|---|
 | 카탈로그에 없는 verb 를 발명 | 존재의 권위는 카탈로그다 |
+| 카탈로그에 없으니 **그 기능이 없다**고 결론 | 카탈로그는 **CLI verb** 의 권위다 — 배포는 선언이고, `/v1/agent/*` 는 CLI 밖이다 |
+| 배포할 verb 를 찾아 헤맴 | 배포는 **fleet repo 의 파일**이다. verb 는 찾고·현행화하고·검사하고·수렴시킨다 |
+| HTTP 를 직접 호출 | 동의 게이트가 **CLI 층**에 있어 그대로 우회된다 |
 | 기억한 verb 이름을 재사용 | 개명에 별칭이 없다 (`daemon` → `moumd run`) |
 | `requiresConfirmation:false` 를 "안전"으로 해석 | `--yes` 가 없다는 뜻일 뿐이다 |
 | `supportsDryRun:true` 를 "안 쓴다"의 증거로 사용 | 카탈로그는 **선언**의 반영이다 |
