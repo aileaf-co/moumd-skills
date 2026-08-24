@@ -104,6 +104,37 @@ moumd fleet role match        # 이 선언이 어느 노드에 붙나 (labels �
 ⚠ **`moumd onboard` 와 `moumd mesh onboard` 는 다른 verb 다.** 앞은 *이 노드가 여정의 어디쯤인가*
 (읽기 전용), 뒤는 *그룹 + 선택적 GitOps fleet 을 프로비저닝하고 mesh 에 가입*(생성)이다.
 
+### 끝을 확인하기 — 에이전트가 로컬 LLM 과 **실제로** 통신하는가
+
+moumd 는 여기까지 답한다. **질의를 보내는 verb 는 없다** — 왕복은 에이전트나 앱이 만든다.
+그러니 갈 수 있는 데까지 좁히고, **나머지는 사용자에게 확인을 요청하라.**
+
+```bash
+moumd proxy status            # enabled · configuredProviders · effectiveRoutes · provider health
+moumd proxy resolve           # 그 모델 이름이 실제로 라우트에 걸리나 (모델명을 인자로)
+moumd trace list              # 사후 흔적 — 요청이 실제로 흘렀나
+```
+
+| 어디서 끊겼나 | 신호 (실측) |
+|---|---|
+| 프록시가 꺼져 있음 | `proxy status` → `enabled: false` · `configuredProviders: 0` · `effectiveRoutes: []` |
+| 모델 이름이 라우트에 없음 | `proxy resolve <모델>` → **exit 4** · `model_not_found` — *"no route matches model 'X'"* |
+| 라우트는 있는데 백엔드가 죽음 | `proxy status` 의 provider health |
+| 여기까지 다 초록인데 답이 안 옴 | **moumd 밖이다** — 사용자에게 확인을 요청하라 |
+
+🔴 **`trace list` 가 `[]` 인 것을 "통신 안 됨"으로 읽지 마라.** `proxy status` 의
+`observability.enabled` 가 `false` 면 애초에 **기록을 하지 않는다** — 빈 배열은 *"흔적이 없다"* 이지
+*"트래픽이 없었다"* 가 아니다(실측: 이 호스트가 정확히 그 상태였다). 관측을 켜기 전의
+`trace list` 는 증거가 아니다. §2 의 *"`false` 를 안전으로 읽지 마라"* 와 같은 클래스다.
+
+**확인을 요청할 때는 위 표에서 어디까지 초록이었는지를 함께 말하라.** *"연결이 안 됩니다"* 로는
+사용자가 할 수 있는 게 없다. *"라우트는 잡히고 provider 도 healthy 인데 제가 왕복을 만들 수
+없습니다 — 에이전트에서 한 번 질의해 주시겠습니까"* 는 다음 행동이 하나로 좁혀진다.
+
+⚠ 이 사다리는 **막혔을 때만의 것이 아니다.** 배포 직후 "됐다"고 보고하기 전에 여기까지
+내려와라 — `pkg reconcile` 이 초록인 것은 *선언이 적용됐다*는 뜻이지 *에이전트가 모델과 말한다*는
+뜻이 아니다.
+
 ### 이 스킬이 다루지 않는 표면
 
 | 작업 | 어디 |
@@ -419,6 +450,8 @@ moumd fleet snapshot    # fleet 전체: ACTIVE 멤버의 membership·도달성·
 | 카탈로그에 없으니 **그 기능이 없다**고 결론 | 카탈로그는 **CLI verb** 의 권위다 — 배포는 선언이고, `/v1/agent/*` 는 CLI 밖이다 |
 | 배포할 verb 를 찾아 헤맴 | 배포는 **fleet repo 의 파일**이다. verb 는 찾고·현행화하고·검사하고·수렴시킨다 |
 | HTTP 를 직접 호출 | 동의 게이트가 **CLI 층**에 있어 그대로 우회된다 |
+| `trace list` 가 비었다고 "트래픽 없음" 판정 | 관측이 꺼져 있으면 **기록 자체를 안 한다** |
+| 왕복을 확인 못 했는데 "됐다"고 보고 | 확인 못 하는 칸은 **사용자에게 요청**하라 — 어디까지 초록인지와 함께 |
 | 기억한 verb 이름을 재사용 | 개명에 별칭이 없다 (`daemon` → `moumd run`) |
 | `requiresConfirmation:false` 를 "안전"으로 해석 | `--yes` 가 없다는 뜻일 뿐이다 |
 | `supportsDryRun:true` 를 "안 쓴다"의 증거로 사용 | 카탈로그는 **선언**의 반영이다 |
