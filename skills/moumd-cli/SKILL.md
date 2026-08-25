@@ -173,6 +173,98 @@ moumd secrets doctor   # 이 머신에서 무엇이 host 비밀을 지키고 있
 파일로 간다. 그 경우에도 순서는 같다: 무엇이 필요한지는 문서가 아니라 `fleet dsc validate` 가
 말하게 하고, 값은 사용자에게 요청하라.
 
+### mesh 자격증명이 없으면 — **사람에게 묻기 전에 플랫폼에 물어라**
+
+여정의 첫 칸(`mesh up`)은 setup key 를 요구한다. 그 키를 *"사용자만 갖고 있다"* 고 단정하면
+막힌다 — **플랫폼 PAT 하나면 자체 발급된다.** 2026-08-25 실측으로 열린 경로다.
+
+먼저 이 데몬이 **무엇을 루트 자격증명으로 쓰고 있는지**부터 물어라. 추론하지 마라:
+
+```bash
+moumd auth status          # rootCredential — PAT 인가 브라우저 세션인가, 그리고 어디서 왔나
+moumd auth pat             # PAT 하위 verb (set/clear …) — `--help` 가 계약
+```
+
+PAT 해석 사다리는 **둘**이고 순서가 있다:
+
+```
+① MOUM_PLATFORM_PAT        env — CI·컨테이너용. 디스크에 흔적을 안 남긴다
+② <config-dir>/platform-pat  0600 파일 (`moumd auth pat set` 이 쓰는 것)
+```
+
+⚠ OS 키링은 **의도적으로 사다리에 없다** — moumd 의 키링은 Linux 에서 no-backend 스텁이고,
+Linux 가 바로 이 기능의 주 배포 대상이다. 그래서 이 토큰을 지키는 통제는 **파일 모드 0600** 이다.
+
+⚠ `moumd auth pat set` 은 재시작 없이 먹는다 — **이 코드를 실제로 담은 바이너리에서만.**
+`cargo build` 는 설치된 데몬을 갱신하지 않는다. 무엇이 쓰이는지는 위 `auth status` 가 답한다.
+
+#### PAT 이 세션보다 강한 이유 — `mesh:write`
+
+`mesh:write` 는 서버에서 세션 루트 스코프에 **일부러 빠져 있다.** 그래서 브라우저로 로그인한
+세션은 그것을 위임할 수 없고, 대시보드에서 발급한 PAT 만 갖는다. *"로그인은 했는데 mesh 가
+안 된다"* 의 대부분이 이것이고, **재로그인으로는 절대 풀리지 않는다.**
+
+#### setup key 를 직접 받아오기 (플랫폼 API — moumd 카탈로그 밖이다)
+
+```bash
+PAT=<moum_ 로 시작하는 PAT>       # argv·히스토리에 남기지 마라. 파일이나 env 로
+B=https://dev.moum-ops.com        # 셀마다 다르다. prod 는 다른 호스트다
+
+curl -sS -H "Authorization: Bearer $PAT" "$B/api/v1/users/me"
+#  → org · plan.peer_limit · usage.mesh_vpn.active_peers
+#  → token.network_scope 와 token.networks[].id  ← 다음 줄에 넣을 networkId
+
+curl -sS -H "Authorization: Bearer $PAT" "$B/api/v1/mesh/setupkey?server=<networkId>"
+#  → {"setup_key":"…","management_url":"https://nb-dedicated-….moum-ops.com"}
+```
+
+🔴 **`?server=` 를 빼면 403 이고, 그 403 은 스코프 부족이 아니다.** 본문이 정확히 말해 준다 —
+`This token is limited to specific servers, so the request must name one with ?server=<networkId>`.
+**403 을 보고 "권한이 없다"로 읽지 마라.** 그 오독이 실제로 기록에 남아 있고(`mesh:enroll scope
+없음 → self-serve 발급 불가`), 그 결론을 믿으면 사람에게 키를 받으러 가느라 시간을 잃는다.
+**에러 본문을 읽어라 — 상태코드는 판정이 아니다.**
+
+`management_url` 은 **셀마다 다르고 하드코딩된 기본값이 없다.** 과거 상수(`nb-shared-dev…`)는
+은퇴했다. setup key 와 **같은 응답에서** 온 값을 쓰고, 짝을 갈라놓지 마라.
+
+🔴🔴 **이 키는 재사용 키가 아니다 — one-off 이고 수명이 짧다(실측 ~10분).** 이것을 모르면
+"발급은 200 인데 가입은 `setup key is invalid`" 라는 **원인이 안 보이는 실패**를 만난다.
+200 은 *발급됐다* 는 뜻이지 *지금도 유효하다* 는 뜻이 아니다.
+
+```bash
+# 판별: 두 번 부르면 서로 다른 키가 온다 = 호출마다 새로 민팅되는 one-off
+#   ⚠ 값을 화면에 띄우지 않는다. macOS 엔 sha256sum 이 없으므로 shasum 을 쓴다(이식형).
+for i in 1 2; do
+  curl -sS -H "Authorization: Bearer $PAT" "$B/api/v1/mesh/setupkey?server=$NET" \
+  | python3 -c 'import json,sys,hashlib;print(hashlib.sha256(json.load(sys.stdin)["setup_key"].encode()).hexdigest()[:16])'
+done
+
+# 목록에서 성질을 확인한다(값은 안 준다 — 올바른 태도다)
+curl -sS -H "Authorization: Bearer $PAT" "$B/api/v1/mesh/setup-keys?server=$NET"
+#  → type=one-off|reusable · state=valid|expired · used_times/usage_limit · expires_at
+#  → 자체 발급본은 `moum-daemon-<uid>-<epoch_ms>` 이름의 **one-off** 로 쌓인다
+```
+
+⚠ **재사용 키는 API 로 못 만든다** — `POST /api/v1/mesh/setup-keys` 는 **405** 다. 대시보드 전용이다.
+
+⇒ **그래서 키는 쓰기 직전에 발급하라.** 파일에 미리 넣어 두고 30분 뒤에 쓰면 반드시 죽는다.
+노드를 여러 번·시차를 두고 가입시켜야 한다면 (1) 대시보드에서 reusable 키를 받거나
+(2) 쓰기 직전에 매번 새로 발급하는 구조로 짜라.
+
+#### 붙인 다음 — peer 위생
+
+```bash
+moumd mesh status          # 이 노드가 붙었나 · 어느 mgmt URL 로
+moumd mesh peers --local   # 로컬 netbird 인벤토리 (플래그 없는 `mesh peers` 는 SaaS 평면이다 — 다른 것)
+```
+
+- **peer 발견은 즉시가 아니다.** `mesh up` 은 1초 안에 반환하지만 peer 는 15~30초 뒤에 보인다.
+  첫 조회의 0 을 실패로 읽지 마라 — 재시도하라.
+- **plan 에 peer 상한이 있다**(`users/me` 의 `plan.peer_limit`). 죽은 VM 이 남긴 유령 peer 가
+  그 자리를 먹으면 **다음 온보딩이 막힌다.**
+- 🔴 **철거 순서: `netbird down` 을 VM 삭제보다 먼저.** 역순이면 유령 peer 가 남고, 그것을
+  지우려면 콘솔로 가야 한다.
+
 ### 이 스킬이 다루지 않는 표면
 
 | 작업 | 어디 |
