@@ -166,8 +166,19 @@ moumd secrets doctor   # 이 머신에서 무엇이 host 비밀을 지키고 있
 ⚠ **비밀 값을 명령줄에 붙여넣지 마라.** `rotation` 이 `--from env|file|stdin` 을 주는 이유가
 그것이다 — argv 는 프로세스 목록·셸 히스토리·로그에 남는다. 사용자에게 안내할 때도 그렇게 하라.
 
-🔴 **`fleet secret set` 에는 `--yes` 게이트가 없다**(§2 의 17개에 들어 있지 않다). 이미
-`present` 인 것을 덮어쓰면 **말없이 덮인다.** ①의 status 확인을 건너뛰지 마라.
+🔴 **`fleet secret set` 은 이미 있는 이름을 거부한다**(2026-08-26 부터). 덮어쓰려면
+`--replace` 로 명시해야 한다. 그렇다고 ①을 건너뛰지 마라 — `--replace` 를 반사적으로 붙이면
+가드가 없던 때로 돌아간다. **먼저 status 를 보고, 덮어야 할 이유를 알고 붙여라.**
+
+⚠ **`--replace` 는 `--force` 와 다른 축이다.** `--force` 는 *"폐기된(revoked) 노드에게도
+봉인한다"* 는 뜻이라 덮어쓰기와 무관하다 — 값을 갱신하려고 `--force` 를 쓰면 **폐기 노드
+재승인까지 함께 켜진다.**
+
+⚠ 빈 값도 거부된다 — `--from` 은 빈 소스를(2026-08-20 부터), `set` 은 공백뿐인 값과 빈
+`--set-file` 대상을 거부한다. 예전엔 조용히 봉인돼 **소비자 쪽 인증 실패**로 뒤늦게 나타났다.
+
+⚠ 이 계약은 **바이너리 버전에 달려 있다**. 더 낡은 moumd 는 말없이 덮는다 — 그래서 ①의
+status 확인은 어느 쪽에서도 옳다.
 
 ⚠ 카탈로그에 없는 설정(예: 메신저 DSC 파라미터)은 비밀이 아니라 **선언**이다 — 위 루프 ④의
 파일로 간다. 그 경우에도 순서는 같다: 무엇이 필요한지는 문서가 아니라 `fleet dsc validate` 가
@@ -584,7 +595,8 @@ moumd fleet snapshot    # fleet 전체: ACTIVE 멤버의 membership·도달성·
 | 왕복을 확인 못 했는데 "됐다"고 보고 | 확인 못 하는 칸은 **사용자에게 요청**하라 — 어디까지 초록인지와 함께 |
 | 필요한 설정을 문서/기억에서 answer | `moumd secrets where` 가 what·location·rotation 을 준다 |
 | 비밀 값을 명령줄 인자로 전달 | argv 는 프로세스 목록·히스토리·로그에 남는다 — `--from env\|file\|stdin` |
-| status 확인 없이 `moumd fleet secret set` | `--yes` 게이트가 없어 **말없이 덮는다** |
+| status 확인 없이 `moumd fleet secret set` | 이제 거부된다. 그렇다고 `--replace` 를 **반사적으로 붙이지 마라** |
+| 덮어쓰려고 `--force` 를 사용 | `--force` 는 *"폐기된 노드에게도 봉인"* 이다 — 덮어쓰기는 `--replace` |
 | 기억한 verb 이름을 재사용 | 개명에 별칭이 없다 (`daemon` → `moumd run`) |
 | `requiresConfirmation:false` 를 "안전"으로 해석 | `--yes` 가 없다는 뜻일 뿐이다 |
 | `supportsDryRun:true` 를 "안 쓴다"의 증거로 사용 | 카탈로그는 **선언**의 반영이다 |
