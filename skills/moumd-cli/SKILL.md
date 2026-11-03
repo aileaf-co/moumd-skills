@@ -266,7 +266,7 @@ curl -sS -H "Authorization: Bearer $PAT" "$B/api/v1/mesh/setup-keys?server=$NET"
 
 ```bash
 moumd mesh status          # 이 노드가 붙었나 · 어느 mgmt URL 로
-moumd mesh peers --local   # 로컬 netbird 인벤토리 (플래그 없는 `mesh peers` 는 SaaS 평면이다 — 다른 것)
+moumd mesh peer list --local   # 로컬 netbird 인벤토리 (플래그 없는 `mesh peer list` 는 SaaS 평면이다 — 다른 것)
 ```
 
 - **peer 발견은 즉시가 아니다.** `mesh up` 은 1초 안에 반환하지만 peer 는 15~30초 뒤에 보인다.
@@ -328,11 +328,20 @@ moumd catalog --format json
 
 **카탈로그에 없는 명령을 발명하지 마라.** 이것이 이 스킬의 유일하게 중요한 규칙이다.
 
-카탈로그는 크다 — 실측 2026-08-24 (moumd 2026.8.0): **verb 276개 · 최상위 그룹 37개 · JSON 약 280 KB**.
+카탈로그는 크다 — 실측 2026-09-03 (moumd 2026.9.x): **verb 약 258개(runnable 209) · 최상위 그룹 35개**.
+
+🔴 **2026-09-03 출시 전 freeze — 옛 철자는 이제 존재하지 않는다.** Phase 1~3 이 접은 64개
+철자(`mesh groups` · `logout` · `proxy enable` · `filesync start` · `config get` · `reload` …)와
+그 재작성 층을 **통째로 제거**했다. 지금 그것들을 치면 **alias 가 아니라 clap exit 2**(unknown
+command)다. 카탈로그 봉투의 `legacy[]` 도 사라졌고 `schemaVersion` 은 그때 **3** 이 됐다(실측 2026-11-03, moumd 2026.1029.0: **4**).
+기억으로 옛 이름을 부르지 말고 `moumd catalog --format json --verb <경로>` 로 확인하라.
 
 ⚠ 이 숫자는 **드리프트한다**. 2026-08-04 엔 263개·33그룹이었다.
-⚠ 그리고 verb 는 **개명되며 별칭을 남기지 않는다** — `daemon` 은 2026-08-17 `moumd run` 이 됐고
-  별칭이 없다(옛 이름은 clap exit 2 로 죽는다). 기억으로 부르지 말고 카탈로그를 봐라.
+⚠ **개명된 verb 는 예외 없이 별칭 없이 끊긴다(exit 2).** `daemon`→`moumd run`(2026-08-17) 도,
+  2026-09-02 재철자(`mesh groups`→`mesh group list`, `fleet list-pending`→`fleet list --status pending` 등)도
+  마찬가지다 — 후자는 한때 숨은 호환 철자로 남아 있었으나 **2026-09-03 출시 전 freeze 가 64개를
+  통째로 제거**했다(카탈로그 `legacy[]` 도 그때 사라졌다). 옛 철자는 이제 어느 것도 파싱되지 않는다.
+  기억으로 부르지 말고 카탈로그를 봐라 — `--verb <옛철자>` 도 정식 서브트리로 답한다.
 
 매 턴 통째로 읽지 말고 **좁혀라**:
 
@@ -350,7 +359,7 @@ moumd fleet keys --help                            # 상세는 --help 가 낫다
 
 | 필드 | 의미 |
 |---|---|
-| `schemaVersion` | 와이어 계약 버전(현재 `1`). 바이너리 버전과 **별개**다 |
+| `schemaVersion` | 와이어 계약 버전(2026-09-03 freeze 로 `3`·`legacy[]` 제거, 실측 2026-11-03 `4`). 바이너리 버전과 **별개**다 |
 | `generatedFrom` | 이 카탈로그를 낸 바이너리 (예: `moumd 2026.8.0`) |
 | `agentMode` | 위 §0 의 env 이름을 **프로그램이 읽을 수 있게** 실어 준다 |
 | `contractText` | `moumd --help` 의 계약 텍스트와 **같은 문자열**. 이 문서보다 그쪽이 최신이다 |
@@ -362,7 +371,7 @@ verb 하나:
 |---|---|
 | `path` | verb 경로 (예: `fleet keys init`) |
 | `summary` | 한 줄 설명 |
-| `longSummary` | **운전 지식** — 누가 실행하는가·순서·비가역성·양쪽 바이너리 쌍둥이. `summary` 와 다를 때만 실린다(실측: 276개 중 73개) |
+| `longSummary` | **운전 지식** — 누가 실행하는가·순서·비가역성·양쪽 바이너리 쌍둥이. `summary` 와 다를 때만 실린다(실측 2026-09-04: 258개 중 86개) |
 | `runnable` | 바로 실행 가능한가. `false` = 서브커맨드를 요구하는 그룹 |
 | `requiresConfirmation` | **`--yes` 플래그가 있다**는 뜻 — §2 를 읽어라 |
 | `supportsDryRun` | `--dry-run` 이 **선언돼 있다** |
@@ -390,24 +399,32 @@ moumd catalog --format json | wc -c
 > `requiresConfirmation: false` = **"이 verb 에 `--yes` 플래그가 없다"**
 > ≠ "이 verb 는 안전하다"
 
-실측(2026-08-24): 전체 276개 중 `--yes` 를 가진 verb 는 **17개**다.
-나머지 259개가 안전하다는 뜻이 아니다 — 그저 그 플래그가 없다는 뜻이다.
+실측(2026-09-04): 전체 258개 중 `--yes` 를 가진 verb 는 **15개**다.
+나머지 243개가 안전하다는 뜻이 아니다 — 그저 그 플래그가 없다는 뜻이다.
 
-**게이트는 호출 지점마다 배선**돼 있어 커버리지가 **부분적**이다. 그리고 그 17개가 각각
+**게이트는 호출 지점마다 배선**돼 있어 커버리지가 **부분적**이다. 그리고 그 15개가 각각
 어떻게 처분됐는지는 **추측할 필요가 없다** — moum-ops 레포에 원장이 있다:
 
 ```bash
-cat ci/destructive-gate-ledger.txt        # <verb>\t<gated|exempt|todo>\t<근거>
+cat ci/destructive-gate-ledger.txt        # 탭 7칸: verb · mode · gated|exempt|todo · rerun · blast · protection · 복구
 scripts/check-destructive-gate-ledger.sh  # 처분 없는 --yes verb 가 생기면 RED
 ```
 
 원장이 SoR 이다. 새 `--yes` verb 가 생기면 **처분을 쓸 때까지 가드가 붉어지므로**, 이
-문서에 목록을 복제할 이유가 없다. 실측(2026-08-24): **gated 15 · exempt 2 · todo 0**.
+문서에 목록을 복제할 이유가 없다. 실측(2026-09-04): **gated 14 · exempt 1 · todo 0**.
+⚠ 2026-09-09 원장 모집단이 `--yes` verb 에서 **쓰기 verb 전체**로 넓어졌다 — 행 수·exempt 수는
+이제 `--yes` 를 갖지 않은 verb 까지 센다. `--yes` verb 만의 처분을 보려면 카탈로그의
+`requiresConfirmation` 집합과 원장 1칸(verb)을 맞대어라.
 
-🔴 그 **exempt 2개는 `MOUMD_AGENT_ALLOW_DESTRUCTIVE` 를 보지 않는다** — `--yes` 하나로
-실행된다. `moumd fleet init` 과 `moumd fleet authority unrevoke-intermediate` 다.
-(둘 다 `--yes` 가 없으면 프롬프트 대신 **실패**하므로 "agent mode 는 절대 멈추지 않는다"는
-계약은 지켜진다. 빠지는 것은 **환경 차원의 opt-in** 이다.)
+🔴 그 **exempt 는 이제 하나** — `moumd fleet init` 만 `MOUMD_AGENT_ALLOW_DESTRUCTIVE` 를 보지
+않고 `--yes` 하나로 실행된다. (`--yes` 가 없으면 프롬프트 대신 **실패**하므로 "agent mode 는
+절대 멈추지 않는다"는 계약은 지켜진다. 빠지는 것은 **환경 차원의 opt-in** 이다.)
+⚠ 정정 2026-09-04 — 여기 함께 적혀 있던 `fleet authority unrevoke-intermediate` 는 2026-09-03
+freeze 에서 **제거**됐다(정식: `fleet authority revoke-intermediate --undo --fp <hex>`). 그리고
+동의 축은 **모드별**이다 — revoke 모드는 gated(`--yes` + `MOUMD_AGENT_ALLOW_DESTRUCTIVE=1`)이고,
+`--undo`(re-trust)는 게이트를 타지 않고 **`--yes` 하나만** 요구한다(원장 행과 `--help` 가 그렇게
+말한다). 즉 옛 문장의 verb 이름은 사라졌지만, `--yes` 하나로 실행되는 경로는 `--undo` 로 남아 있다.
+재현: `grep -vE '^#|^$' ci/destructive-gate-ledger.txt | cut -f3 | sort | uniq -c`
 
 🔴 그리고 `moumd fleet init` 에서 **위험한 플래그는 `--yes` 가 아니라 `--force`** 다 —
 원장이 그렇게 적어 뒀다("게이트 축과 파괴 축이 어긋난 사례"). `--yes` 는 요약 뒤의 y/N 을
@@ -510,7 +527,7 @@ moumd fleet keys init --config-dir /tmp/x     # ❌ exit 2 — clap 이 거부�
 ⚠ **경로만 축이 아니다.** 서비스 조작(`moumd start`·`stop`·`restart`)의 격리축은
 config dir 이 아니라 **서비스 이름**(`MOUMD_SERVICE_NAME`)이다 — §5 를 봐라.
 
-⚠ **`fleet keys path` 를 격리 확인용으로 쓰지 마라.** 키가 없는 새 디렉토리에서는 경로 대신
+⚠ **`fleet keys show --path` 를 격리 확인용으로 쓰지 마라**(옛 철자 `fleet keys path` 는 freeze 에서 제거됐다)**.** 키가 없는 새 디렉토리에서는 경로 대신
 *"no age key found"* 에러(exit 1)를 낸다 — 격리가 걸렸는지 아닌지를 구분해 주지 못한다.
 그 역할은 `moumd paths` 가 맡는다.
 
@@ -601,7 +618,7 @@ moumd fleet snapshot    # fleet 전체: ACTIVE 멤버의 membership·도달성·
 | `requiresConfirmation:false` 를 "안전"으로 해석 | `--yes` 가 없다는 뜻일 뿐이다 |
 | `supportsDryRun:true` 를 "안 쓴다"의 증거로 사용 | 카탈로그는 **선언**의 반영이다 |
 | `MOUMD_AGENT_ALLOW_DESTRUCTIVE=1` / `MOUMD_AGENT_ALLOW_REVEAL=1` 을 스스로 설정 | 사용자가 켜는 스위치다 |
-| 환경 스위치를 안 켰으니 안전하다고 가정 | 17개 중 2개는 `--yes` 하나로 실행된다 (§2) |
+| 환경 스위치를 안 켰으니 안전하다고 가정 | `fleet init` 과 `fleet authority revoke-intermediate --undo` 는 `--yes` 하나로 실행된다 (§2) |
 | 격리 실측 없이 파괴적 verb 시험 | 격리는 **부분적**이다 — 10축 중 4~7축만 옮겨진다 |
 | `--config-dir` 로 격리하고 `moumd paths` 로 확인 | `paths` 는 그 플래그를 안 받는다 — 환경변수로 걸어라 (§3) |
 | 에이전트 턴에서 `moumd run` 호출 | 데몬이 되어 블록한다. 서비스 조작은 `moumd start` 다 |
